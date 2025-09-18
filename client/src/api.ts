@@ -1,8 +1,9 @@
-import { PartialTask, Task } from './types';
+import { TaskListSchema, TaskSchema, PartialTask } from 'busy-bee-schema';
+// import { PartialTask } from './types';
 
 const API_URL = 'http://localhost:4001';
 
-export const fetchTasks = async (showCompleted: boolean): Promise<Task[]> => {
+export const fetchTasks = async (showCompleted: boolean) => {
   const url = new URL(`/tasks`, API_URL);
 
   if (showCompleted) {
@@ -15,10 +16,12 @@ export const fetchTasks = async (showCompleted: boolean): Promise<Task[]> => {
     throw new Error('Failed to fetch tasks');
   }
 
-  return response.json();
+  const tasks = TaskListSchema.parse(await response.json());
+
+  return tasks;
 };
 
-export const getTask = async (id: string): Promise<Task> => {
+export const getTask = async (id: string) => {
   const url = new URL(`/tasks/${id}`, API_URL);
   const response = await fetch(url);
 
@@ -26,18 +29,20 @@ export const getTask = async (id: string): Promise<Task> => {
     throw new Error('Failed to fetch task');
   }
 
-  return response.json();
+  const task = TaskSchema.parse(await response.json());
+  return task;
 };
 
 export const createTask = async (task: PartialTask): Promise<void> => {
   const url = new URL('/tasks', API_URL);
+  const parsedTask = TaskSchema.parse(task);
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(task),
+    body: JSON.stringify(parsedTask),
   });
 
   if (!response.ok) {
@@ -47,13 +52,14 @@ export const createTask = async (task: PartialTask): Promise<void> => {
 
 export const updateTask = async (id: string, task: PartialTask): Promise<void> => {
   const url = new URL(`/tasks/${id}`, API_URL);
+  const parsedTask = TaskSchema.parse(task);
 
   const response = await fetch(url, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(task),
+    body: JSON.stringify(parsedTask),
   });
 
   if (!response.ok) {

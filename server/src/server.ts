@@ -2,6 +2,7 @@ import cors from 'cors';
 import express from 'express';
 import type { Database } from 'sqlite';
 import { handleError } from './handle-error.js';
+import { CreateTaskSchema, TaskSchema, UpdateTaskSchema } from 'busy-bee-schema';
 
 export async function createServer(database: Database) {
   const app = express();
@@ -45,8 +46,8 @@ export async function createServer(database: Database) {
 
   app.post('/tasks', async (req, res) => {
     try {
-      const task = req.body;
-      if (!task.title) return res.status(400).json({ message: 'Title is required' });
+      const task = CreateTaskSchema.parse(req.body);
+      // if (!task.title) return res.status(400).json({ message: 'Title is required' });
 
       await createTask.run([task.title, task.description]);
       return res.status(201).json({ message: 'Task created successfully!' });
@@ -60,12 +61,12 @@ export async function createServer(database: Database) {
     try {
       const { id } = req.params;
 
-      const previous = await getTask.get([id]);
-      const updates = req.body;
+      const previous = TaskSchema.parse(await getTask.get([id]));
+      const updates = UpdateTaskSchema.parse(req.body);
       const task = { ...previous, ...updates };
 
       await updateTask.run([task.title, task.description, task.completed, id]);
-      return res.status(200).json({message: 'Task updated successfully'});
+      return res.status(200).json({ message: 'Task updated successfully' });
     } catch (error) {
       return handleError(req, res, error);
     }
