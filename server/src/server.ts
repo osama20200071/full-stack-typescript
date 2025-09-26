@@ -1,8 +1,9 @@
 import cors from 'cors';
-import express from 'express';
+import express, { RequestHandler } from 'express';
 import type { Database } from 'sqlite';
 import { handleError } from './handle-error.js';
 import { CreateTaskSchema, TaskSchema, UpdateTaskSchema } from 'busy-bee-schema';
+import { z, ZodSchema } from 'zod';
 
 export async function createServer(database: Database) {
   const app = express();
@@ -18,9 +19,130 @@ export async function createServer(database: Database) {
     `UPDATE tasks SET title = ?, description = ?, completed = ? WHERE id = ?`,
   );
 
-  app.get('/tasks', async (req, res) => {
-    const { completed } = req.query;
-    const query = completed === 'true' ? completedTasks : incompleteTasks;
+  // const ValidateCreateTask: RequestHandler<unknown, unknown, CreateTask> = (req, res, next) => {
+  //   try {
+  //     CreateTaskSchema.parse(req.body);
+  //     next();
+  //   } catch (error) {
+  //     return handleError(req, res, error);
+  //   }
+  // };
+
+  const ValidateBody: <T>(
+    schema: ZodSchema<T>,
+  ) => RequestHandler<unknown, unknown, z.infer<typeof schema>> = (schema) => (req, res, next) => {
+    try {
+      schema.parse(req.body);
+      next();
+    } catch (error) {
+      return handleError(req, res, error);
+    }
+  };
+
+  const ValidateParams: <T>(schema: ZodSchema<T>) => RequestHandler<T> =
+    (schema) => (req, res, next) => {
+      try {
+        schema.parse(req.params);
+        next();
+      } catch (error) {
+        return handleError(req, res, error);
+      }
+    };
+
+  // we could force a specific response type also to protect us from ourselves
+  const ValidateQuery: <T>(schema: ZodSchema<T>) => RequestHandler<unknown, unknown, unknown, T> =
+    (schema) => (req, res, next) => {
+      try {
+        schema.parse(req.query);
+        next();
+      } catch (error) {
+        return handleError(req, res, error);
+      }
+    };
+
+  // ---- generic helper ----
+  // type InferOrUnknown<S> = S extends ZodSchema ? z.infer<S> : unknown;
+
+  // type SchemasOptions<
+  //   B extends ZodSchema | undefined = undefined,
+  //   P extends ZodSchema | undefined = undefined,
+  //   Q extends ZodSchema | undefined = undefined,
+  // > = {
+  //   body?: B;
+  //   params?: P;
+  //   query?: Q;
+  // };
+
+  // // combined validator
+  // function ValidateSchemas<
+  //   B extends ZodSchema | undefined = undefined,
+  //   P extends ZodSchema | undefined = undefined,
+  //   Q extends ZodSchema | undefined = undefined,
+  // >(
+  //   schemas: SchemasOptions<B, P, Q>,
+  // ): RequestHandler<InferOrUnknown<P>, unknown, InferOrUnknown<B>, InferOrUnknown<Q>> {
+  //   return (req, res, next) => {
+  //     try {
+  //       if (schemas.body) schemas.body.parse(req.body);
+  //       if (schemas.params) schemas.params.parse(req.params);
+  //       if (schemas.query) schemas.query.parse(req.query);
+  //       next();
+  //     } catch (error) {
+  //       return handleError(req, res, error);
+  //     }
+  //   };
+  // }
+
+  type Schemas = {
+    body?: ZodSchema;
+    params?: ZodSchema;
+    query?: ZodSchema;
+  };
+
+  // Utility: if a schema exists, infer its type; otherwise `unknown`
+  type Infer<S> = S extends ZodSchema ? z.infer<S> : unknown;
+
+  /**
+   * Combined validator with simpler typing.
+   */
+  function ValidateSchemas<S extends Schemas>(
+    schemas: S,
+  ): RequestHandler<
+    Infer<S['params']>, // req.params
+    unknown, // res body
+    Infer<S['body']>, // req.body
+    Infer<S['query']> // req.query
+  > {
+    return (req, res, next) => {
+      try {
+        if (schemas.body) schemas.body.parse(req.body);
+        if (schemas.params) schemas.params.parse(req.params);
+        if (schemas.query) schemas.query.parse(req.query);
+        next();
+      } catch (error) {
+        return handleError(req, res, error);
+      }
+    };
+  }
+
+  const ValidateCreateTask = ValidateBody(CreateTaskSchema);
+  const ValidateGetTaskParams = ValidateParams(TaskSchema.pick({ id: true }));
+
+  const FilterSchema = TaskSchema.pick({ completed: true }).partial();
+  // const ValidateGetTasksQuery = ValidateQuery(FilterSchema);
+
+  const Validate = ValidateSchemas({
+    body: CreateTaskSchema,
+    params: TaskSchema.pick({ id: true }),
+    query: FilterSchema,
+  });
+
+  app.get('/tasks', Validate, async (req, res) => {
+    const { completed: Com } = req.query;
+    const { completed, title, description } = req.body;
+    const { id } = req.params;
+
+    const query = completed ? completedTasks : incompleteTasks;
 
     try {
       const tasks = await query.all();
@@ -31,7 +153,7 @@ export async function createServer(database: Database) {
   });
 
   // Get a specific task
-  app.get('/tasks/:id', async (req, res) => {
+  app.get('/tasks/:id', ValidateGetTaskParams, async (req, res) => {
     try {
       const { id } = req.params;
       const task = await getTask.get([id]);
@@ -44,9 +166,10 @@ export async function createServer(database: Database) {
     }
   });
 
-  app.post('/tasks', async (req, res) => {
+  app.post('/tasks', ValidateCreateTask, async (req, res) => {
     try {
-      const task = CreateTaskSchema.parse(req.body);
+      // const task = CreateTaskSchema.parse(req.body);
+      const task = req.body;
       // if (!task.title) return res.status(400).json({ message: 'Title is required' });
 
       await createTask.run([task.title, task.description]);
