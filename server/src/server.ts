@@ -1,159 +1,33 @@
 import cors from 'cors';
-import express, { RequestHandler } from 'express';
+import express from 'express';
 import type { Database } from 'sqlite';
 import { handleError } from './handle-error.js';
 import { CreateTaskSchema, TaskSchema, UpdateTaskSchema } from 'busy-bee-schema';
-import { z, ZodSchema } from 'zod';
-import * as OpenApiValidator from 'express-openapi-validator';
+import { TaskClient } from './client.js';
+import { ValidateSchemas } from './helper.js';
 
 export async function createServer(database: Database) {
   const app = express();
+  const client = new TaskClient(database);
   app.use(cors());
   app.use(express.json());
-  app.use(
-    OpenApiValidator.middleware({
-      apiSpec: './openapi.json',
-      validateRequests: true,
-      validateResponses: false,
-    }),
-  );
-
-  const incompleteTasks = await database.prepare('SELECT * FROM tasks whERE completed = 0');
-  const completedTasks = await database.prepare('SELECT * FROM tasks WHERE completed = 1');
-  const getTask = await database.prepare('SELECT * FROM tasks WHERE id = ?');
-  const createTask = await database.prepare('INSERT INTO tasks (title, description) VALUES (?, ?)');
-  const deleteTask = await database.prepare('DELETE FROM tasks WHERE id = ?');
-  const updateTask = await database.prepare(
-    `UPDATE tasks SET title = ?, description = ?, completed = ? WHERE id = ?`,
-  );
-
-  // const ValidateCreateTask: RequestHandler<unknown, unknown, CreateTask> = (req, res, next) => {
-  //   try {
-  //     CreateTaskSchema.parse(req.body);
-  //     next();
-  //   } catch (error) {
-  //     return handleError(req, res, error);
-  //   }
-  // };
-
-  const ValidateBody: <T>(
-    schema: ZodSchema<T>,
-  ) => RequestHandler<unknown, unknown, z.infer<typeof schema>> = (schema) => (req, res, next) => {
-    try {
-      schema.parse(req.body);
-      next();
-    } catch (error) {
-      return handleError(req, res, error);
-    }
-  };
-
-  const ValidateParams: <T>(schema: ZodSchema<T>) => RequestHandler<T> =
-    (schema) => (req, res, next) => {
-      try {
-        schema.parse(req.params);
-        next();
-      } catch (error) {
-        return handleError(req, res, error);
-      }
-    };
-
-  // we could force a specific response type also to protect us from ourselves
-  const ValidateQuery: <T>(schema: ZodSchema<T>) => RequestHandler<unknown, unknown, unknown, T> =
-    (schema) => (req, res, next) => {
-      try {
-        schema.parse(req.query);
-        next();
-      } catch (error) {
-        return handleError(req, res, error);
-      }
-    };
-
-  // ---- generic helper ----
-  // type InferOrUnknown<S> = S extends ZodSchema ? z.infer<S> : unknown;
-
-  // type SchemasOptions<
-  //   B extends ZodSchema | undefined = undefined,
-  //   P extends ZodSchema | undefined = undefined,
-  //   Q extends ZodSchema | undefined = undefined,
-  // > = {
-  //   body?: B;
-  //   params?: P;
-  //   query?: Q;
-  // };
-
-  // // combined validator
-  // function ValidateSchemas<
-  //   B extends ZodSchema | undefined = undefined,
-  //   P extends ZodSchema | undefined = undefined,
-  //   Q extends ZodSchema | undefined = undefined,
-  // >(
-  //   schemas: SchemasOptions<B, P, Q>,
-  // ): RequestHandler<InferOrUnknown<P>, unknown, InferOrUnknown<B>, InferOrUnknown<Q>> {
-  //   return (req, res, next) => {
-  //     try {
-  //       if (schemas.body) schemas.body.parse(req.body);
-  //       if (schemas.params) schemas.params.parse(req.params);
-  //       if (schemas.query) schemas.query.parse(req.query);
-  //       next();
-  //     } catch (error) {
-  //       return handleError(req, res, error);
-  //     }
-  //   };
-  // }
-
-  type Schemas = {
-    body?: ZodSchema;
-    params?: ZodSchema;
-    query?: ZodSchema;
-  };
-
-  // Utility: if a schema exists, infer its type; otherwise `unknown`
-  type Infer<S> = S extends ZodSchema ? z.infer<S> : unknown;
-
-  /**
-   * Combined validator with simpler typing.
-   */
-  function ValidateSchemas<S extends Schemas>(
-    schemas: S,
-  ): RequestHandler<
-    Infer<S['params']>, // req.params
-    unknown, // res body
-    Infer<S['body']>, // req.body
-    Infer<S['query']> // req.query
-  > {
-    return (req, res, next) => {
-      try {
-        if (schemas.body) schemas.body.parse(req.body);
-        if (schemas.params) schemas.params.parse(req.params);
-        if (schemas.query) schemas.query.parse(req.query);
-        next();
-      } catch (error) {
-        return handleError(req, res, error);
-      }
-    };
-  }
-
-  const ValidateCreateTask = ValidateBody(CreateTaskSchema);
-  const ValidateGetTaskParams = ValidateParams(TaskSchema.pick({ id: true }));
 
   const FilterSchema = TaskSchema.pick({ completed: true }).partial();
-  // const ValidateGetTasksQuery = ValidateQuery(FilterSchema);
+  const TaskIdSchema = TaskSchema.pick({ id: true });
 
-  const Validate = ValidateSchemas({
-    body: CreateTaskSchema,
-    params: TaskSchema.pick({ id: true }),
-    query: FilterSchema,
+  const ValidateCreateTask = ValidateSchemas({ body: CreateTaskSchema });
+  const ValidateTaskParams = ValidateSchemas({ params: TaskIdSchema });
+  const ValidateGetTasksQuery = ValidateSchemas({ query: FilterSchema });
+  const ValidateUpdateTask = ValidateSchemas({
+    params: TaskIdSchema,
+    body: UpdateTaskSchema,
   });
 
-  app.get('/tasks', Validate, async (req, res) => {
-    const { completed: Com } = req.query;
-    const { completed, title, description } = req.body;
-    const { id } = req.params;
-
-    const query = completed ? completedTasks : incompleteTasks;
+  app.get('/tasks', ValidateGetTasksQuery, async (req, res) => {
+    const { completed } = req.query;
 
     try {
-      const tasks = await query.all();
+      const tasks = client.getTasks(completed);
       return res.json(tasks);
     } catch (error) {
       return handleError(req, res, error);
@@ -161,10 +35,10 @@ export async function createServer(database: Database) {
   });
 
   // Get a specific task
-  app.get('/tasks/:id', ValidateGetTaskParams, async (req, res) => {
+  app.get('/tasks/:id', ValidateTaskParams, async (req, res) => {
     try {
       const { id } = req.params;
-      const task = await getTask.get([id]);
+      const task = await client.getTask(id);
 
       if (!task) return res.status(404).json({ message: 'Task not found' });
 
@@ -176,11 +50,8 @@ export async function createServer(database: Database) {
 
   app.post('/tasks', ValidateCreateTask, async (req, res) => {
     try {
-      // const task = CreateTaskSchema.parse(req.body);
       const task = req.body;
-      // if (!task.title) return res.status(400).json({ message: 'Title is required' });
-
-      await createTask.run([task.title, task.description]);
+      await client.createTask(task);
       return res.status(201).json({ message: 'Task created successfully!' });
     } catch (error) {
       return handleError(req, res, error);
@@ -188,15 +59,14 @@ export async function createServer(database: Database) {
   });
 
   // Update a task
-  app.put('/tasks/:id', async (req, res) => {
+  app.put('/tasks/:id', ValidateUpdateTask, async (req, res) => {
     try {
       const { id } = req.params;
-
-      const previous = TaskSchema.parse(await getTask.get([id]));
-      const updates = UpdateTaskSchema.parse(req.body);
+      const updates = req.body;
+      const previous = TaskSchema.parse(await client.getTask(+id));
       const task = { ...previous, ...updates };
 
-      await updateTask.run([task.title, task.description, task.completed, id]);
+      await client.updateTask(task.id, task);
       return res.status(200).json({ message: 'Task updated successfully' });
     } catch (error) {
       return handleError(req, res, error);
@@ -204,10 +74,10 @@ export async function createServer(database: Database) {
   });
 
   // Delete a task
-  app.delete('/tasks/:id', async (req, res) => {
+  app.delete('/tasks/:id', ValidateTaskParams, async (req, res) => {
     try {
       const { id } = req.params;
-      await deleteTask.run([id]);
+      await client.deleteTask(id);
       return res.status(200).json({ message: 'Task deleted successfully' });
     } catch (error) {
       return handleError(req, res, error);
