@@ -1,12 +1,49 @@
 import { initTRPC } from '@trpc/server';
 import type { Context } from './trpc-context.js';
+import {
+  CreateTaskSchema,
+  TaskIdSchema,
+  TaskListQuerySchema,
+  UpdateTaskSchema,
+} from 'busy-bee-schema';
+import { z } from 'zod';
 
 const t = initTRPC.context<Context>().create();
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
 
-export const taskRouter = router({});
+export const taskRouter = router({
+  getTasks: publicProcedure.input(TaskListQuerySchema).query(async ({ ctx, input }) => {
+    return await ctx.taskClient.getTasks(input.completed);
+  }),
+
+  getTask: publicProcedure.input(TaskIdSchema).query(async ({ ctx, input }) => {
+    return await ctx.taskClient.getTask(input.id);
+  }),
+
+  createTask: publicProcedure.input(CreateTaskSchema).mutation(async ({ ctx, input }) => {
+    await ctx.taskClient.createTask(input);
+    return { success: true };
+  }),
+
+  updateTask: publicProcedure
+    .input(
+      z.object({
+        id: z.coerce.number().int(),
+        task: UpdateTaskSchema,
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await ctx.taskClient.updateTask(input.id, input.task);
+      return { success: true };
+    }),
+
+  deleteTask: publicProcedure.input(TaskIdSchema).mutation(async ({ ctx, input }) => {
+    await ctx.taskClient.deleteTask(input.id);
+    return { success: true };
+  }),
+});
 
 // Create the app router
 export const appRouter = router({
