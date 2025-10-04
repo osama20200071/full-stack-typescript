@@ -2,18 +2,23 @@ import cors from 'cors';
 import express from 'express';
 import type { Database } from 'sqlite';
 import { handleError } from './handle-error.js';
-import { CreateTaskSchema, TaskSchema, UpdateTaskSchema } from 'busy-bee-schema';
+import {
+  CreateTaskSchema,
+  FilterSchema,
+  TaskIdSchema,
+  TaskSchema,
+  UpdateTaskSchema,
+} from 'busy-bee-schema';
 import { TaskClient } from './client.js';
 import { ValidateSchemas } from './helper.js';
+import { createTRPCRouter } from './trpc/trpc-adapter.js';
 
 export async function createServer(database: Database) {
   const app = express();
   const client = new TaskClient(database);
   app.use(cors());
   app.use(express.json());
-
-  const FilterSchema = TaskSchema.pick({ completed: true }).partial();
-  const TaskIdSchema = TaskSchema.pick({ id: true });
+  app.use('/api', createTRPCRouter());
 
   const ValidateCreateTask = ValidateSchemas({ body: CreateTaskSchema });
   const ValidateTaskParams = ValidateSchemas({ params: TaskIdSchema });
@@ -27,7 +32,8 @@ export async function createServer(database: Database) {
     const { completed } = req.query;
 
     try {
-      const tasks = client.getTasks(completed);
+      const tasks = await client.getTasks(completed);
+      console.log('Tasks', tasks);
       return res.json(tasks);
     } catch (error) {
       return handleError(req, res, error);
@@ -62,9 +68,10 @@ export async function createServer(database: Database) {
   app.put('/tasks/:id', ValidateUpdateTask, async (req, res) => {
     try {
       const { id } = req.params;
+      const previous = TaskSchema.parse(await client.getTask(id));
       const updates = req.body;
-      const previous = TaskSchema.parse(await client.getTask(+id));
       const task = { ...previous, ...updates };
+      console.log('previous , updates', previous, updates);
 
       await client.updateTask(task.id, task);
       return res.status(200).json({ message: 'Task updated successfully' });
