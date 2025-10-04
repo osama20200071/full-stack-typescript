@@ -16,6 +16,11 @@ datasource db {
 model Task {
   id          Int     @id @default(autoincrement())
   title       String
+  // this optional field here is string | null not string | undefined
   description String?
   completed   Boolean @default(false)
+}
+
+generator zod {
+  provider = "zod-prisma-types"
 }
