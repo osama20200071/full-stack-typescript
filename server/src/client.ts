@@ -21,8 +21,8 @@ export class TaskClient {
   }
 
   async getTasks(completed: boolean | undefined) {
-    const incompleteTasks = await this.database.prepare('SELECT * FROM tasks whERE completed = 1');
-    const completedTasks = await this.database.prepare('SELECT * FROM tasks WHERE completed = 0');
+    const incompleteTasks = await this.database.prepare('SELECT * FROM tasks WHERE completed = 0');
+    const completedTasks = await this.database.prepare('SELECT * FROM tasks WHERE completed = 1');
     const tasks = completed ? completedTasks : incompleteTasks;
     const rawTasks = await tasks.all();
     return TaskListSchema.parse(rawTasks);
@@ -38,8 +38,7 @@ export class TaskClient {
     const createTaskQuery = await this.database.prepare(
       'INSERT INTO tasks (title, description) VALUES (?, ?)',
     );
-    const createdTask = await createTaskQuery.run([task.title, task.description]);
-    return TaskSchema.parse(createdTask);
+    await createTaskQuery.run([task.title, task.description]);
   }
 
   async updateTask(id: number, task: PartialTask) {
@@ -47,11 +46,11 @@ export class TaskClient {
       `UPDATE tasks SET title = ?, description = ?, completed = ? WHERE id = ?`,
     );
 
-    return await updateTaskQuery.run([task.title, task.description, task.completed, id]);
+    await updateTaskQuery.run([task.title, task.description, task.completed, id]);
   }
 
   async deleteTask(id: number) {
     const deleteTaskQuery = await this.database.prepare('DELETE FROM tasks WHERE id = ?');
-    return await deleteTaskQuery.run([id]);
+    await deleteTaskQuery.run([id]);
   }
 }
