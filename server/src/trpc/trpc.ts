@@ -15,15 +15,24 @@ export const publicProcedure = t.procedure;
 
 export const taskRouter = router({
   getTasks: publicProcedure.input(TaskListQuerySchema).query(async ({ ctx, input }) => {
-    return await ctx.taskClient.getTasks(input.completed);
+    return await ctx.prisma.task.findMany({
+      where: { completed: input.completed },
+    });
+    // return await ctx.taskClient.getTasks(input.completed);
   }),
 
   getTask: publicProcedure.input(TaskIdSchema).query(async ({ ctx, input }) => {
-    return await ctx.taskClient.getTask(input.id);
+    return await ctx.prisma.task.findUnique({
+      where: { id: input.id },
+    });
+    // return await ctx.taskClient.getTask(input.id);
   }),
 
   createTask: publicProcedure.input(CreateTaskSchema).mutation(async ({ ctx, input }) => {
-    await ctx.taskClient.createTask(input);
+    await ctx.prisma.task.create({
+      data: { ...input },
+    });
+    // await ctx.taskClient.createTask(input);
     return { success: true };
   }),
 
@@ -35,14 +44,25 @@ export const taskRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      const currentTask = await ctx.taskClient.getTask(input.id);
+      const currentTask = await ctx.prisma.task.findUnique({
+        where: { id: input.id },
+      });
       const task = { ...currentTask, ...input.task };
-      await ctx.taskClient.updateTask(input.id, task);
+      await ctx.prisma.task.update({
+        data: task,
+        where: { id: input.id },
+      });
+      // const currentTask = await ctx.taskClient.getTask(input.id);
+      // const task = { ...currentTask, ...input.task };
+      // await ctx.taskClient.updateTask(input.id, task);
       return { success: true };
     }),
 
   deleteTask: publicProcedure.input(TaskIdSchema).mutation(async ({ ctx, input }) => {
-    await ctx.taskClient.deleteTask(input.id);
+    await ctx.prisma.task.delete({
+      where: { id: input.id },
+    });
+    // await ctx.taskClient.deleteTask(input.id);
     return { success: true };
   }),
 });
