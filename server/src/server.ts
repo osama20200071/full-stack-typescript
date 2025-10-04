@@ -12,6 +12,8 @@ import {
 import { TaskClient } from './client.js';
 import { ValidateSchemas } from './helper.js';
 import { createTRPCRouter } from './trpc/trpc-adapter.js';
+import { serve, setup } from 'swagger-ui-express';
+import openApiDocument from '../openapi.json' with { type: 'json' };
 
 export async function createServer(database: Database) {
   const app = express();
@@ -19,6 +21,13 @@ export async function createServer(database: Database) {
   app.use(cors());
   app.use(express.json());
   app.use('/api', createTRPCRouter());
+
+  // Serve OpenAPI docs
+  app.use('/api-docs', serve, setup(openApiDocument));
+  // Expose OpenAPI spec as JSON
+  app.get('/openapi.json', (req, res) => {
+    res.json(openApiDocument);
+  });
 
   const ValidateCreateTask = ValidateSchemas({ body: CreateTaskSchema });
   const ValidateTaskParams = ValidateSchemas({ params: TaskIdSchema });
