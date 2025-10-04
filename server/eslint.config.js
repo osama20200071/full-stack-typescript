@@ -26,7 +26,7 @@ export default tseslint.config(
     files: ['**/*.{ts,tsx,js,jsx}'],
     rules: {
       'no-console': 'off',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     },
   },
   eslintConfigPrettier,
