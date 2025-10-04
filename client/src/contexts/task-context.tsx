@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 
-import * as api from '../api';
+import { api } from '../api';
 
 import { useSearchParams } from '@/utilities/use-search-params';
 import type { PartialTask, Task } from '../types';

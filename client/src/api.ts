@@ -1,80 +1,13 @@
-import { TaskListSchema, TaskSchema, PartialTask } from 'busy-bee-schema';
-// import { PartialTask } from './types';
-
-const API_URL = 'http://localhost:4001';
-
-export const fetchTasks = async (showCompleted: boolean) => {
-  const url = new URL(`/tasks`, API_URL);
-
-  if (showCompleted) {
-    url.searchParams.set('completed', 'true');
-  }
-
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch tasks');
-  }
-
-  const tasks = TaskListSchema.parse(await response.json());
-
-  return tasks;
+import { PartialTask, CreateTask, Task } from 'busy-bee-schema';
+import { tRPCApi } from './trpc-api';
+// import { RestApi } from './rest-api';
+export const API_URL = 'http://localhost:4001';
+export type API = {
+  fetchTasks: (showCompleted: boolean) => Promise<Task[]>;
+  getTask: (id: string) => Promise<Task>;
+  createTask: (task: CreateTask) => Promise<void>;
+  updateTask: (id: string, task: PartialTask) => Promise<void>;
+  deleteTask: (id: string) => Promise<void>;
 };
 
-export const getTask = async (id: string) => {
-  const url = new URL(`/tasks/${id}`, API_URL);
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch task');
-  }
-
-  const task = TaskSchema.parse(await response.json());
-  return task;
-};
-
-export const createTask = async (task: PartialTask): Promise<void> => {
-  const url = new URL('/tasks', API_URL);
-  const parsedTask = TaskSchema.parse(task);
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(parsedTask),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to create task');
-  }
-};
-
-export const updateTask = async (id: string, task: PartialTask): Promise<void> => {
-  const url = new URL(`/tasks/${id}`, API_URL);
-  const parsedTask = TaskSchema.parse(task);
-
-  const response = await fetch(url, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(parsedTask),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to update task');
-  }
-};
-
-export const deleteTask = async (id: string): Promise<void> => {
-  const url = new URL(`/tasks/${id}`, API_URL);
-
-  const response = await fetch(url, {
-    method: 'DELETE',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to delete task');
-  }
-};
+export const api = new tRPCApi();
