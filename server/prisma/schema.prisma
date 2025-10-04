@@ -24,3 +24,12 @@ model Task {
 generator zod {
   provider = "zod-prisma-types"
 }
+
+generator trpc {
+  provider        = "prisma-trpc-generator"
+  withZod         = true
+  withMiddleware  = false
+  withShield      = false
+  contextPath     = "../src/context"
+  trpcOptionsPath = "../src/trpcOptions"
+}
